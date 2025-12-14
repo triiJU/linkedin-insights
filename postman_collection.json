@@ -1,0 +1,195 @@
+{
+  "info": {
+    "name": "LinkedIn Insights Microservice",
+    "description": "API collection for LinkedIn Insights Microservice",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Get Page by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages/deepsolv",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages", "deepsolv"]
+        },
+        "description": "Get LinkedIn page details. If not in DB, scrapes in real-time."
+      }
+    },
+    {
+      "name": "List All Pages",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages?page=1&page_size=10",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "page_size",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Filter Pages by Followers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages?min_followers=20000&max_followers=40000",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages"],
+          "query": [
+            {
+              "key": "min_followers",
+              "value": "20000"
+            },
+            {
+              "key": "max_followers",
+              "value": "40000"
+            }
+          ]
+        },
+        "description": "Find pages with followers between 20k-40k"
+      }
+    },
+    {
+      "name": "Search Pages by Name",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages?search=tech",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages"],
+          "query": [
+            {
+              "key": "search",
+              "value": "tech"
+            }
+          ]
+        },
+        "description": "Search pages by name (case-insensitive)"
+      }
+    },
+    {
+      "name": "Filter Pages by Industry",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages?industry=Technology",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages"],
+          "query": [
+            {
+              "key": "industry",
+              "value": "Technology"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Page Employees",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages/deepsolv/employees?page=1&page_size=10",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages", "deepsolv", "employees"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "page_size",
+              "value": "10"
+            }
+          ]
+        },
+        "description": "Get people working at the company"
+      }
+    },
+    {
+      "name": "Get Page Posts",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages/deepsolv/posts?page=1&page_size=15",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages", "deepsolv", "posts"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "page_size",
+              "value": "15"
+            }
+          ]
+        },
+        "description": "Get recent 10-15 posts from the page"
+      }
+    },
+    {
+      "name": "Refresh Page Data",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages/deepsolv/refresh",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages", "deepsolv", "refresh"]
+        },
+        "description": "Force re-scrape a page to update data"
+      }
+    },
+    {
+      "name": "Delete Page",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/pages/deepsolv",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pages", "deepsolv"]
+        },
+        "description": "Delete a page and all associated data"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ]
+}
