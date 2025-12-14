@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from typing import Optional
 
 class Settings(BaseSettings):
     APP_NAME: str = "LinkedIn Insights Microservice"
@@ -9,7 +10,7 @@ class Settings(BaseSettings):
     MONGODB_URL: str = "mongodb://localhost:27017"
     DATABASE_NAME: str = "linkedin_insights"
     
-
+    # Cache
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
@@ -20,9 +21,14 @@ class Settings(BaseSettings):
     SCRAPER_TIMEOUT: int = 30
     MAX_POSTS_PER_PAGE: int = 20
    
+    # Pagination
     DEFAULT_PAGE_SIZE: int = 10
     MAX_PAGE_SIZE: int = 100
     
+    # AI Summary (optional)
+    OPENAI_API_KEY: Optional[str] = None
+    
     class Config:
         env_file = ".env"
+
 settings = Settings()
