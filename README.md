@@ -168,7 +168,3 @@ ENABLE_CACHE=false
 - LinkedIn may block requests
 - Try adjusting timeout in config
 - Some data requires authentication
-
-## License
-
-Educational/Assignment project.
