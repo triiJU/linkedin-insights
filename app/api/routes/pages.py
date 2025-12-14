@@ -2,15 +2,18 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
 import asyncio
 from datetime import datetime
+import math
 
-from app.database.mongodb import get_database
+from app.database. mongodb import get_database
 from app.services.scraper import LinkedInScraper
 from app.services.cache import cache_service
-from app.schemas.page import PageResponse, PageListResponse
+from app.schemas. page import PageResponse, PageListResponse
+from app.schemas.post import PostResponse, PostListResponse
+from app.schemas.user import UserResponse, UserListResponse
 from app.models.page import PageModel
 from app.models.post import PostModel
 from app.models.user import SocialMediaUserModel
-from app.config import settings
+from app. config import settings
 
 router = APIRouter(prefix="/pages", tags=["Pages"])
 
@@ -22,44 +25,45 @@ async def get_page(page_id: str, db=Depends(get_database)):
     """
     cache_key = f"page:{page_id}"
     
-  
-    if settings.ENABLE_CACHE:
+    # Check cache
+    if settings.ENABLE_CACHE: 
         cached = await cache_service.get(cache_key)
         if cached:
             return cached
-  
+    
+    # Check database
     page_data = await db.pages.find_one({"page_id": page_id})
     
-    if not page_data:
-        
+    if not page_data: 
+        # Scrape if not found
         scraper = LinkedInScraper()
         try:
-            scraped_data = await scraper.scrape_page(page_id)
+            scraped_data = await scraper. scrape_page(page_id)
             page_model = PageModel(**scraped_data)
             
             await db.pages.insert_one(
                 page_model.model_dump(by_alias=True, exclude=['id'])
             )
             
-            
+            # Scrape posts and employees asynchronously
             posts_data = await scraper.scrape_posts(page_id, settings.MAX_POSTS_PER_PAGE)
             employees_data = await scraper.scrape_employees(page_id)
             
-            
-            for post in posts_data:
+            # Store posts
+            for post in posts_data: 
                 post_model = PostModel(**post)
-                await db.posts.update_one(
+                await db. posts.update_one(
                     {"post_id": post['post_id']},
-                    {"$set": post_model.model_dump(by_alias=True, exclude=['id'])},
+                    {"$set": post_model. model_dump(by_alias=True, exclude=['id'])},
                     upsert=True
                 )
             
-            
-            for employee in employees_data:
+            # Store employees
+            for employee in employees_data: 
                 user_model = SocialMediaUserModel(**employee)
-                await db.users.update_one(
+                await db. users.update_one(
                     {"user_id": employee['user_id']},
-                    {"$set": user_model.model_dump(by_alias=True, exclude=['id'])},
+                    {"$set": user_model. model_dump(by_alias=True, exclude=['id'])},
                     upsert=True
                 )
             
@@ -70,7 +74,7 @@ async def get_page(page_id: str, db=Depends(get_database)):
     
     response_data = PageResponse(**page_data).model_dump()
     
-    
+    # Cache the result
     if settings.ENABLE_CACHE:
         await cache_service.set(cache_key, response_data)
     
@@ -78,7 +82,7 @@ async def get_page(page_id: str, db=Depends(get_database)):
 
 @router.get("/", response_model=PageListResponse)
 async def list_pages(
-    page: int = Query(1, ge=1),
+    page:  int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     min_followers: Optional[int] = Query(None, description="Minimum followers"),
     max_followers: Optional[int] = Query(None, description="Maximum followers"),
@@ -87,7 +91,7 @@ async def list_pages(
     db=Depends(get_database)
 ):
     """
-    List pages with optional filters:
+    List pages with optional filters: 
     - Follower count range (e.g., 20k-40k)
     - Industry filter
     - Name search (case-insensitive)
@@ -95,38 +99,44 @@ async def list_pages(
     """
     query = {}
     
-    if min_followers is not None or max_followers is not None:
+    # Follower range filter
+    if min_followers is not None or max_followers is not None: 
         query['total_followers'] = {}
         if min_followers is not None:
             query['total_followers']['$gte'] = min_followers
         if max_followers is not None:
             query['total_followers']['$lte'] = max_followers
     
-   
-    if industry:
+    # Industry filter
+    if industry: 
         query['industry'] = {"$regex": industry, "$options": "i"}
     
-    
+    # Name search filter
     if search:
-        query['page_name'] = {"$regex": search, "$options": "i"}
+        query['page_name'] = {"$regex": search, "$options":  "i"}
     
+    # Get total count
     total = await db.pages.count_documents(query)
     
+    # Calculate pagination
     skip = (page - 1) * page_size
-    cursor = db.pages.find(query).skip(skip).limit(page_size).sort("total_followers", -1)
-    pages = await cursor.to_list(page_size)
+    total_pages = math.ceil(total / page_size) if total > 0 else 1
     
-    pages_response = [PageResponse(**p) for p in pages]
+    # Fetch pages
+    cursor = db.pages.find(query).skip(skip).limit(page_size)
+    pages_data = await cursor.to_list(length=page_size)
+    
+    pages = [PageResponse(**page_data) for page_data in pages_data]
     
     return PageListResponse(
-        pages=pages_response,
+        pages=pages,
         total=total,
         page=page,
         page_size=page_size,
-        total_pages=(total + page_size - 1) // page_size
+        total_pages=total_pages
     )
 
-@router.get("/{page_id}/employees", response_model=List[dict])
+@router.get("/{page_id}/employees", response_model=UserListResponse)
 async def get_page_employees(
     page_id: str,
     page: int = Query(1, ge=1),
@@ -134,63 +144,147 @@ async def get_page_employees(
     db=Depends(get_database)
 ):
     """
-    Get employees/people associated with the company.
-    Note: LinkedIn does not publicly expose follower identities.
-    This endpoint returns employees as a proxy.
+    Get list of employees/people working at a company.
     """
+    # Check if page exists
+    page_data = await db.pages.find_one({"page_id": page_id})
+    if not page_data:
+        raise HTTPException(status_code=404, detail="Page not found")
+    
+    query = {"company_page_id": page_id}
+    
+    # Get total count
+    total = await db. users.count_documents(query)
+    
+    # Calculate pagination
     skip = (page - 1) * page_size
-    cursor = db.users.find({"company_page_id": page_id}).skip(skip).limit(page_size)
-    users = await cursor.to_list(page_size)
-    return users
+    total_pages = math.ceil(total / page_size) if total > 0 else 1
+    
+    # Fetch users
+    cursor = db.users.find(query).skip(skip).limit(page_size)
+    users_data = await cursor.to_list(length=page_size)
+    
+    users = [UserResponse(**user_data) for user_data in users_data]
+    
+    return UserListResponse(
+        users=users,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
 
-@router.get("/{page_id}/posts", response_model=List[dict])
+@router.get("/{page_id}/posts", response_model=PostListResponse)
 async def get_page_posts(
     page_id: str,
     page: int = Query(1, ge=1),
-    page_size: int = Query(15, ge=1, le=50),
+    page_size: int = Query(15, ge=1, le=100),
     db=Depends(get_database)
 ):
-    """Get recent 10-15 posts from the page"""
-    skip = (page - 1) * page_size
-    cursor = db.posts.find({"page_id": page_id}).sort("posted_at", -1).skip(skip).limit(page_size)
-    posts = await cursor.to_list(page_size)
-    return posts
-
-@router.delete("/{page_id}")
-async def delete_page(page_id: str, db=Depends(get_database)):
-    """Delete page and all associated data"""
-    page_result = await db.pages.delete_one({"page_id": page_id})
-    await db.posts.delete_many({"page_id": page_id})
-    await db.users.delete_many({"company_page_id": page_id})
-    
-    if settings.ENABLE_CACHE:
-        await cache_service.delete(f"page:{page_id}")
-    
-    if page_result.deleted_count == 0:
+    """
+    Get recent posts from a company page.
+    Returns top 10-15 posts.
+    """
+    # Check if page exists
+    page_data = await db.pages.find_one({"page_id": page_id})
+    if not page_data:
         raise HTTPException(status_code=404, detail="Page not found")
     
-    return {"message": "Page deleted successfully"}
+    query = {"page_id": page_id}
+    
+    # Get total count
+    total = await db.posts. count_documents(query)
+    
+    # Calculate pagination
+    skip = (page - 1) * page_size
+    total_pages = math.ceil(total / page_size) if total > 0 else 1
+    
+    # Fetch posts (sorted by posted_at descending)
+    cursor = db.posts.find(query).sort("posted_at", -1).skip(skip).limit(page_size)
+    posts_data = await cursor.to_list(length=page_size)
+    
+    posts = [PostResponse(**post_data) for post_data in posts_data]
+    
+    return PostListResponse(
+        posts=posts,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
 
-@router.post("/{page_id}/refresh")
+@router.post("/{page_id}/refresh", response_model=PageResponse)
 async def refresh_page(page_id: str, db=Depends(get_database)):
-    """Re-scrape page to update data"""
+    """
+    Force re-scrape a page and update database.
+    Clears cache and fetches fresh data.
+    """
     scraper = LinkedInScraper()
     
     try:
+        # Scrape fresh data
         scraped_data = await scraper.scrape_page(page_id)
         scraped_data['updated_at'] = datetime.utcnow()
         
+        # Update or insert page
         page_model = PageModel(**scraped_data)
         await db.pages.update_one(
             {"page_id": page_id},
-            {"$set": page_model.model_dump(by_alias=True, exclude=['id'])},
+            {"$set": page_model. model_dump(by_alias=True, exclude=['id'])},
             upsert=True
         )
         
-        if settings.ENABLE_CACHE:
+        # Re-scrape posts and employees
+        posts_data = await scraper. scrape_posts(page_id, settings.MAX_POSTS_PER_PAGE)
+        employees_data = await scraper.scrape_employees(page_id)
+        
+        # Update posts
+        for post in posts_data: 
+            post_model = PostModel(**post)
+            await db. posts.update_one(
+                {"post_id": post['post_id']},
+                {"$set": post_model.model_dump(by_alias=True, exclude=['id'])},
+                upsert=True
+            )
+        
+        # Update employees
+        for employee in employees_data: 
+            user_model = SocialMediaUserModel(**employee)
+            await db.users.update_one(
+                {"user_id": employee['user_id']},
+                {"$set": user_model. model_dump(by_alias=True, exclude=['id'])},
+                upsert=True
+            )
+        
+        # Clear cache
+        if settings.ENABLE_CACHE: 
             await cache_service.delete(f"page:{page_id}")
         
-        return {"message": "Page refreshed successfully"}
+        page_data = await db.pages. find_one({"page_id": page_id})
+        return PageResponse(**page_data)
         
-    except Exception as e:
+    except Exception as e: 
         raise HTTPException(status_code=500, detail=f"Refresh failed: {str(e)}")
+
+@router.delete("/{page_id}")
+async def delete_page(page_id: str, db=Depends(get_database)):
+    """
+    Delete a page and all associated data (posts, employees).
+    """
+    # Delete page
+    result = await db.pages.delete_one({"page_id": page_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Page not found")
+    
+    # Delete associated posts
+    await db.posts.delete_many({"page_id":  page_id})
+    
+    # Delete associated employees
+    await db.users.delete_many({"company_page_id": page_id})
+    
+    # Clear cache
+    if settings.ENABLE_CACHE:
+        await cache_service.delete(f"page:{page_id}")
+    
+    return {"message": f"Page {page_id} and associated data deleted successfully"}
